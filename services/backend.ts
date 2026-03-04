@@ -120,6 +120,31 @@ export const BackendService = {
     return mapUser(data);
   },
 
+  async login(email: string, password?: string): Promise<User> {
+    // 1. Authenticate with Supabase Auth
+    if (password) {
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (authError) throw authError;
+    }
+
+    // 2. Fetch User Profile from public table
+    // We try to match by Email to be robust against manual DB insertions where IDs might differ
+    const { data: profile, error: profileError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single();
+
+    if (profileError || !profile) {
+      throw new Error("Usuário autenticado, mas perfil não encontrado na base de dados.");
+    }
+
+    return mapUser(profile);
+  },
+
   async updateUser(user: User): Promise<User> {
     const { data, error } = await supabase.from('users').update({
       name: user.name,

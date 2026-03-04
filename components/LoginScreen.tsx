@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Button } from './Button';
 
 interface LoginScreenProps {
-  onLogin: (identifier: string) => void;
+  onLogin: (identifier: string, password?: string) => Promise<void>;
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
@@ -10,14 +10,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    // Simulate network delay
-    setTimeout(() => {
-      onLogin(identifier);
+    try {
+      await onLogin(identifier, password);
+    } catch (error) {
+      // Error handling is done in App.tsx usually, but we stop loading here
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   return (
