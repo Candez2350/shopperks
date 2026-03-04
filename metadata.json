@@ -1,0 +1,7 @@
+{
+  "name": "ShopPerks",
+  "description": "Sistema premium de cupons inter-lojas para funcionários de shopping, com interface moderna e fluida.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
