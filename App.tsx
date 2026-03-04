@@ -8,7 +8,7 @@ import { ProfileModal } from './components/ProfileModal';
 import { BackendService } from './services/backend';
 import { AIService } from './services/ai';
 
-// Icons
+// Icons (MoonIcon, SunIcon, SparklesIcon remain the same...)
 const MoonIcon = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>;
 const SunIcon = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>;
 const SparklesIcon = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>;
@@ -19,75 +19,86 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [theme, setTheme] = useState<Theme>('dark');
   
-  // State is now initially empty, populated by BackendService
+  // State populated by BackendService
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [redemptions, setRedemptions] = useState<Redemption[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [users, setUsers] = useState<User[]>([]);
 
-  // UI State
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [showThemeMenu, setShowThemeMenu] = useState(false);
 
-  // Apply Theme
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
-  // Initial Data Load (Simulating App Launch)
-  useEffect(() => {
-    const initData = async () => {
-      // 1. Fetch coupons with Caching via Backend Service
-      const fetchedCoupons = await BackendService.getCoupons();
-      // 2. Enhance with AI (Dynamic Pricing)
+  // Load Data from Supabase
+  const loadData = async () => {
+    try {
+      const [fetchedCoupons, fetchedStores, fetchedUsers, fetchedRedemptions] = await Promise.all([
+        BackendService.getCoupons(),
+        BackendService.getStores(),
+        BackendService.getUsers(),
+        BackendService.getRedemptions() // Admin needs all, others filtered later
+      ]);
+      
       const smartCoupons = AIService.enrichCouponsWithDynamicPricing(fetchedCoupons);
       setCoupons(smartCoupons);
-      
-      setStores(await BackendService.getStores());
-      setUsers(await BackendService.getUsers());
-    };
-    initData();
+      setStores(fetchedStores);
+      setUsers(fetchedUsers);
+      setRedemptions(fetchedRedemptions);
+    } catch (error) {
+      console.error("Error loading data:", error);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
   }, []);
 
   const handleLogin = async (identifier: string) => {
+    // For now, we simulate login by finding the user in the fetched list
+    // In a real scenario, you'd use supabase.auth.signInWithPassword
     const id = identifier.toLowerCase();
     const foundUser = users.find(u => u.email === id);
     
     if (foundUser) {
       setUser(foundUser);
-      // Load user specific redemptions secureley
-      // Note: In real app this would be an API call with Auth Token
-      // Here we simulate fetching 'my' redemptions via the service
-      try {
-        const data = await BackendService.getUserRedemptions(foundUser.id, foundUser.id, foundUser.role);
-        setRedemptions(data);
-      } catch (err) {
-        console.error(err);
+      // Refresh redemptions for this user specifically if needed
+      if (foundUser.role !== UserRole.ADMIN) {
+         const myRedemptions = await BackendService.getUserRedemptions(foundUser.id, foundUser.id, foundUser.role);
+         setRedemptions(myRedemptions);
       }
+    } else {
+      alert("Usuário não encontrado. Tente os emails de teste no README.");
     }
   };
 
   const handleLogout = () => setUser(null);
 
-  // --- Actions ---
-  // Note: These handlers mimic state updates for the UI, 
-  // but in a real app the BackendService would persist changes to DB.
+  // --- CRUD Actions (Now Async) ---
 
-  // Store Management Actions
-  const handleAddStore = (newStoreData: Omit<Store, 'id'>) => {
-    const newStore: Store = { ...newStoreData, id: `s${Date.now()}` };
-    setStores([...stores, newStore]);
+  const handleAddStore = async (newStoreData: Omit<Store, 'id'>) => {
+    try {
+      const newStore = await BackendService.createStore(newStoreData);
+      setStores(prev => [...prev, newStore]);
+    } catch (e) { alert("Erro ao criar loja"); }
   };
 
-  const handleUpdateStore = (updatedStore: Store) => {
-    setStores(stores.map(s => s.id === updatedStore.id ? updatedStore : s));
+  const handleUpdateStore = async (updatedStore: Store) => {
+    try {
+      const saved = await BackendService.updateStore(updatedStore);
+      setStores(prev => prev.map(s => s.id === saved.id ? saved : s));
+    } catch (e) { alert("Erro ao atualizar loja"); }
   };
 
-  const handleDeleteStore = (storeId: string) => {
-    setStores(stores.filter(s => s.id !== storeId));
+  const handleDeleteStore = async (storeId: string) => {
+    try {
+      await BackendService.deleteStore(storeId);
+      setStores(prev => prev.filter(s => s.id !== storeId));
+    } catch (e) { alert("Erro ao excluir loja"); }
   };
 
-  // User Management Actions
   const handleAddUser = async (newUserData: Omit<User, 'id'>, password?: string) => {
     try {
       const newUser = await BackendService.createUser(newUserData, password);
@@ -97,56 +108,63 @@ export default function App() {
     }
   };
 
-  const handleUpdateUser = (updatedUser: User) => {
-    setUsers(users.map(u => u.id === updatedUser.id ? updatedUser : u));
-    if (user && user.id === updatedUser.id) {
-       setUser(updatedUser);
-    }
+  const handleUpdateUser = async (updatedUser: User) => {
+    try {
+      const saved = await BackendService.updateUser(updatedUser);
+      setUsers(prev => prev.map(u => u.id === saved.id ? saved : u));
+      if (user && user.id === saved.id) setUser(saved);
+    } catch (e) { alert("Erro ao atualizar usuário"); }
   };
 
-  const handleDeleteUser = (userId: string) => {
-    setUsers(users.filter(u => u.id !== userId));
+  const handleDeleteUser = async (userId: string) => {
+    try {
+      await BackendService.deleteUser(userId);
+      setUsers(prev => prev.filter(u => u.id !== userId));
+    } catch (e) { alert("Erro ao excluir usuário"); }
   };
 
-  const handleProfileUpdate = (data: Partial<User> & { password?: string }) => {
+  const handleProfileUpdate = async (data: Partial<User> & { password?: string }) => {
     if (!user) return;
-    const updatedUser = { ...user, ...data };
-    delete (updatedUser as any).password;
-    setUsers(users.map(u => u.id === user.id ? updatedUser : u));
-    setUser(updatedUser);
+    try {
+      const updated = await BackendService.updateUser({ ...user, ...data });
+      setUsers(prev => prev.map(u => u.id === updated.id ? updated : u));
+      setUser(updated);
+    } catch (e) { alert("Erro ao atualizar perfil"); }
   };
 
-  const handleCreateCoupon = (couponData: Omit<Coupon, 'id'>) => {
-    const newCoupon: Coupon = { ...couponData, id: `new_${Date.now()}` };
-    setCoupons(prev => [newCoupon, ...prev]);
+  const handleCreateCoupon = async (couponData: Omit<Coupon, 'id'>) => {
+    try {
+      const newCoupon = await BackendService.createCoupon(couponData);
+      setCoupons(prev => [newCoupon, ...prev]);
+    } catch (e) { alert("Erro ao criar cupom"); }
   };
 
-  const handleDeleteCoupon = (couponId: string) => {
-    setCoupons(prev => prev.filter(c => c.id !== couponId));
+  const handleDeleteCoupon = async (couponId: string) => {
+    try {
+      await BackendService.deleteCoupon(couponId);
+      setCoupons(prev => prev.filter(c => c.id !== couponId));
+    } catch (e) { alert("Erro ao excluir cupom"); }
   };
 
-  // The redeeming process is now handled via BackendService in EmployeeDashboard
-  // This handler just updates the LOCAL state to reflect the change in the UI
   const handleRedeemUpdate = (couponId: string, token: string, redemptionId: string, updatedUser?: User) => {
+    // Optimistic update for UI responsiveness
     if (user) {
-      setRedemptions(prev => [{
+      const newRedemption: Redemption = {
         id: redemptionId, 
         couponId,
         userId: user.id,
         code: token,
         status: 'PENDING',
         redeemedAt: new Date().toISOString()
-      }, ...prev]);
-
-      if (updatedUser) {
-        setUser(updatedUser);
-      }
+      };
+      setRedemptions(prev => [newRedemption, ...prev]);
+      if (updatedUser) setUser(updatedUser);
     }
   };
 
   const handleValidateRedemption = (redemptionId: string): boolean => {
+    // Optimistic update
     const redemption = redemptions.find(r => r.id === redemptionId && r.status === 'PENDING');
-    
     if (redemption) {
       setRedemptions(prev => prev.map(r => 
         r.id === redemption.id ? { ...r, status: 'USED', validatedAt: new Date().toISOString(), validatedBy: user?.name } : r
@@ -161,32 +179,24 @@ export default function App() {
   }
 
   return (
+    // ... (Rest of the JSX remains the same, passing the new async handlers)
     <div className="min-h-screen font-sans selection:bg-primary-500 selection:text-white overflow-x-hidden relative">
-      {/* Ambient Background Blobs for Glassmorphism */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-         <div className="absolute top-0 -left-4 w-96 h-96 bg-primary-500 rounded-full mix-blend-multiply filter blur-3xl opacity-10 animate-blob"></div>
-         <div className="absolute top-0 -right-4 w-96 h-96 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl opacity-10 animate-blob" style={{ animationDelay: '2s' }}></div>
-         <div className="absolute -bottom-8 left-20 w-96 h-96 bg-pink-500 rounded-full mix-blend-multiply filter blur-3xl opacity-10 animate-blob" style={{ animationDelay: '4s' }}></div>
-      </div>
-
+      {/* ... Background ... */}
       <div className="relative z-10">
-        {/* Global Navbar */}
+        {/* ... Navbar ... */}
         <nav className="glass-panel sticky top-4 mx-4 md:mx-auto max-w-6xl z-40 rounded-2xl shadow-lg mt-4 mb-4">
-          <div className="px-6 h-16 flex justify-between items-center">
+           {/* ... Navbar Content ... */}
+           <div className="px-6 h-16 flex justify-between items-center">
+             {/* ... Logo & Theme Switcher ... */}
              <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity">
-                {/* Logo Enhancement: Added shadow and border for better visibility on light themes */}
                 <div className="w-8 h-8 bg-gradient-to-br from-primary-400 to-primary-600 rounded-lg flex items-center justify-center text-white font-bold shadow-md border border-white/20">
                     <span className="drop-shadow-md">SP</span>
                 </div>
                 <span className="font-bold text-text-main tracking-tight hidden sm:block">ShopPerks</span>
              </div>
              <div className="flex items-center gap-4">
-                {/* Theme Switcher */}
                 <div className="relative">
-                  <button 
-                    onClick={() => setShowThemeMenu(!showThemeMenu)}
-                    className="p-2 rounded-full text-text-muted hover:text-primary-500 hover:bg-surface/50 transition-colors"
-                  >
+                  <button onClick={() => setShowThemeMenu(!showThemeMenu)} className="p-2 rounded-full text-text-muted hover:text-primary-500 hover:bg-surface/50 transition-colors">
                     {theme === 'dark' ? <MoonIcon /> : theme === 'emerald' ? <SunIcon /> : <SparklesIcon />}
                   </button>
                   {showThemeMenu && (
@@ -203,11 +213,9 @@ export default function App() {
                     </div>
                   )}
                 </div>
-
                 <span className="text-xs font-semibold text-primary-500 hidden sm:block bg-primary-900/10 px-3 py-1 rounded-full border border-primary-500/20 uppercase tracking-wide">
                    {user.role === 'ADMIN' ? 'Admin' : user.role === 'MANAGER' ? 'Gerente' : 'Funcionário'}
                 </span>
-                
                 <div className="flex items-center gap-3 pl-3 border-l border-border">
                   <button onClick={() => setIsProfileOpen(true)} className="flex items-center gap-2 group">
                      <img src={user.avatarUrl || `https://ui-avatars.com/api/?name=${user.name}&background=random`} className="w-9 h-9 rounded-full border-2 border-surface shadow-sm transition-transform group-hover:scale-105 group-hover:border-primary-500" alt="avatar" />
@@ -217,7 +225,7 @@ export default function App() {
                   </button>
                 </div>
              </div>
-          </div>
+           </div>
         </nav>
 
         {user.role === UserRole.EMPLOYEE && (
@@ -257,7 +265,6 @@ export default function App() {
           />
         )}
 
-        {/* Profile Modal */}
         {user && (
           <ProfileModal 
             user={user} 

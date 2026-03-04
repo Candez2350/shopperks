@@ -16,7 +16,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
     try {
       await onLogin(identifier, password);
     } catch (error) {
-      // Error handling is done in App.tsx usually, but we stop loading here
+      // O erro será tratado/exibido pelo componente pai (App.tsx)
+      console.error(error);
     } finally {
       setIsLoading(false);
     }
