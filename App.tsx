@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Coupon, Store, User, UserRole, Redemption } from './types';
 import { LoginScreen } from './components/LoginScreen';
 import { EmployeeDashboard } from './components/EmployeeDashboard';
@@ -43,13 +43,13 @@ export default function App() {
       const smartCoupons = AIService.enrichCouponsWithDynamicPricing(fetchedCoupons);
       setCoupons(smartCoupons);
       
-      setStores(BackendService.getStores());
-      setUsers(BackendService.getUsers());
+      setStores(await BackendService.getStores());
+      setUsers(await BackendService.getUsers());
     };
     initData();
   }, []);
 
-  const handleLogin = (identifier: string) => {
+  const handleLogin = async (identifier: string) => {
     const id = identifier.toLowerCase();
     const foundUser = users.find(u => u.email === id);
     
@@ -58,9 +58,12 @@ export default function App() {
       // Load user specific redemptions secureley
       // Note: In real app this would be an API call with Auth Token
       // Here we simulate fetching 'my' redemptions via the service
-      BackendService.getUserRedemptions(foundUser.id, foundUser.id, foundUser.role)
-        .then(data => setRedemptions(data))
-        .catch(err => console.error(err));
+      try {
+        const data = await BackendService.getUserRedemptions(foundUser.id, foundUser.id, foundUser.role);
+        setRedemptions(data);
+      } catch (err) {
+        console.error(err);
+      }
     }
   };
 
@@ -85,9 +88,13 @@ export default function App() {
   };
 
   // User Management Actions
-  const handleAddUser = (newUserData: Omit<User, 'id'>) => {
-    const newUser: User = { ...newUserData, id: `u${Date.now()}` };
-    setUsers([...users, newUser]);
+  const handleAddUser = async (newUserData: Omit<User, 'id'>, password?: string) => {
+    try {
+      const newUser = await BackendService.createUser(newUserData, password);
+      setUsers(prev => [...prev, newUser]);
+    } catch (error: any) {
+      alert(`Erro ao criar usuário: ${error.message}`);
+    }
   };
 
   const handleUpdateUser = (updatedUser: User) => {

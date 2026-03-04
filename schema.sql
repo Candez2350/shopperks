@@ -18,6 +18,7 @@ CREATE TABLE users (
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(50) CHECK (role IN ('ADMIN', 'MANAGER', 'EMPLOYEE')),
+    avatar_url TEXT,
     active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -53,6 +54,7 @@ CREATE TABLE redemptions (
     user_id UUID REFERENCES users(id),
     unique_code VARCHAR(50) UNIQUE NOT NULL, -- O código para o QR Code
     status VARCHAR(20) DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'VALIDATED', 'EXPIRED')),
+    status VARCHAR(20) DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'USED', 'EXPIRED')),
     redeemed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     validated_at TIMESTAMP WITH TIME ZONE
 );

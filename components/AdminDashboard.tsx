@@ -13,7 +13,7 @@ interface AdminDashboardProps {
   onAddStore: (store: Omit<Store, 'id'>) => void;
   onUpdateStore: (store: Store) => void;
   onDeleteStore: (storeId: string) => void;
-  onAddUser: (user: Omit<User, 'id'>) => void;
+  onAddUser: (user: Omit<User, 'id'>, password?: string) => void;
   onUpdateUser: (user: User) => void;
   onDeleteUser: (userId: string) => void;
 }
@@ -44,6 +44,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [userFormData, setUserFormData] = useState<Partial<User>>({ name: '', email: '', role: UserRole.EMPLOYEE, storeId: '' });
+  const [userPassword, setUserPassword] = useState('');
 
   // Filtering
   const filteredStores = useMemo(() => {
@@ -104,6 +105,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleOpenAddUser = () => {
     setEditingUser(null);
     setUserFormData({ name: '', email: '', role: UserRole.EMPLOYEE, storeId: stores[0]?.id || '' });
+    setUserPassword('');
     setIsUserModalOpen(true);
   };
 
@@ -124,7 +126,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (editingUser) {
       onUpdateUser({ ...editingUser, ...payload } as User);
     } else {
-      onAddUser(payload as Omit<User, 'id'>);
+      onAddUser(payload as Omit<User, 'id'>, userPassword);
     }
     setIsUserModalOpen(false);
   };
@@ -443,6 +445,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <label className="block text-sm font-medium text-text-muted mb-1">E-mail</label>
                   <input type="email" required className={inputClasses} value={userFormData.email} onChange={e => setUserFormData({...userFormData, email: e.target.value})} />
                 </div>
+                {!editingUser && (
+                  <div>
+                    <label className="block text-sm font-medium text-text-muted mb-1">Senha Inicial</label>
+                    <input type="password" required className={inputClasses} value={userPassword} onChange={e => setUserPassword(e.target.value)} placeholder="Mínimo 6 caracteres" />
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium text-text-muted mb-1">Função</label>
                   <div className="relative">
