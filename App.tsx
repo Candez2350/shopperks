@@ -18,7 +18,7 @@ type Theme = 'dark' | 'emerald' | 'indigo';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [theme, setTheme] = useState<Theme>('dark');
+  const [theme, setTheme] = useState<Theme>('indigo');
   
   // Global Data State
   const [coupons, setCoupons] = useState<Coupon[]>(COUPONS);
