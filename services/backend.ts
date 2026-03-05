@@ -49,28 +49,6 @@ export const BackendService = {
     return data as Redemption[];
   },
 
-  async getUserById(id: string): Promise<User | null> {
-    console.log("Attempting to fetch user by ID:", id); // Log the ID
-     const { data, error } = await supabase.from('users').select('*').eq('id', id).single();
-     if (error) {
-       console.error("Error fetching user by id:", error);
-       // Don't throw if it's just 'not found', return null
-       if (error.code === 'PGRST116') return null; 
-       throw error;
-     }
-     return data;
-  },
-
-  async getUserByEmail(email: string): Promise<User | null> {
-    const { data, error } = await supabase.from('users').select('*').eq('email', email).single();
-    if (error) {
-      console.error("Error fetching user by email:", error);
-      if (error.code === 'PGRST116') return null;
-      throw error;
-    }
-    return data;
- },
-
   // --- CRUD Functions ---
 
   // Stores
@@ -90,21 +68,12 @@ export const BackendService = {
   },
 
   // Users
-  async addUser(userData: Omit<User, 'id'>): Promise<User> {
-    console.warn("Security Warning: Creating a user profile without creating an auth user. The new user will not be able to log in.");
-    const { data, error } = await supabase.from('users').insert(userData).select().single();
-    if (error) throw error;
-    return data;
-  },
+  // Note: User CREATION and DELETION are handled via Supabase Auth and triggers.
+  // This function is for updating a user's public profile data (e.g., name, role, store_id).
   async updateUser(userData: Partial<User> & { id: string }): Promise<User> {
     const { data, error } = await supabase.from('users').update(userData).eq('id', userData.id).select().single();
     if (error) throw error;
     return data;
-  },
-  async deleteUser(userId: string): Promise<void> {
-    console.warn("Security Warning: Deleting a user profile does not delete the corresponding auth.user from Supabase.");
-    const { error } = await supabase.from('users').delete().eq('id', userId);
-    if (error) throw error;
   },
 
   // Coupons

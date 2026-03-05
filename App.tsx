@@ -48,18 +48,23 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
-  // Auth Listener
+  // Auth Listener & Session Management
   useEffect(() => {
+    setSessionLoaded(false);
     const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
-        const profile = await BackendService.getUserByEmail(session.user.email!);
-        if (profile) {
-          setUser(profile);
-        } else {
-          console.error("Login failed: User profile not found for email:", session.user.email);
+        // With the trigger in place, we can directly query our public profile table
+        const { data: profile, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        if (error && error.code !== 'PGRST116') {
+          console.error('Error fetching user profile:', error);
           setUser(null);
-          // Optional: You might want to sign out the user if their profile is missing
-          // await supabase.auth.signOut();
+        } else {
+          setUser(profile);
         }
       } else {
         setUser(null);
@@ -67,23 +72,9 @@ export default function App() {
       setSessionLoaded(true);
     });
 
-    // Initial session check
-    const checkSession = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (data?.session?.user) {
-        const profile = await BackendService.getUserByEmail(data.session.user.email!);
-        if (profile) {
-          setUser(profile);
-        } else {
-          setUser(null);
-        }
-      }
-      setSessionLoaded(true);
-    };
-    checkSession();
-
     return () => {
-      authListener.subscription.unsubscribe();
+      // Correctly unsubscribe from the listener
+      authListener?.subscription.unsubscribe();
     };
   }, []);
 
@@ -162,12 +153,15 @@ export default function App() {
     } catch (error) { console.error("Failed to update user:", error); }
   };
 
-  const handleDeleteUser = async (userId: string) => {
-    try {
-      await BackendService.deleteUser(userId);
-      setUsers(current => current.filter(u => u.id !== userId));
-    } catch (error) { console.error("Failed to delete user:", error); }
-  };
+  // IMPORTANT: User deletion is a sensitive admin action and has been temporarily disabled.
+  // It requires setting up a secure server-side call (like a Supabase Edge Function)
+  // that uses the service_role key to safely delete the user from auth.users and public.users.
+  // const handleDeleteUser = async (userId: string) => {
+  //   try {
+  //     await BackendService.deleteUser(userId);
+  //     setUsers(current => current.filter(u => u.id !== userId));
+  //   } catch (error) { console.error("Failed to delete user:", error); }
+  // };
 
   const handleProfileUpdate = async (data: Partial<User>) => {
     if (!user) return;
@@ -242,7 +236,6 @@ export default function App() {
             onDeleteStore={handleDeleteStore}
             onAddUser={handleAddUser}
             onUpdateUser={handleUpdateUser}
-            onDeleteUser={handleDeleteUser}
           />
         );
       default:

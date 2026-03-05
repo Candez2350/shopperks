@@ -16,7 +16,7 @@ interface AdminDashboardProps {
   onDeleteStore: (storeId: string) => void;
   onAddUser: (user: Omit<User, 'id'>, password?: string) => void;
   onUpdateUser: (user: User) => void;
-  onDeleteUser: (userId: string) => void;
+  onDeleteUser?: (userId: string) => void;
 }
 
 // Icons
@@ -137,7 +137,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     
     if (itemToDelete.type === 'store') {
       onDeleteStore(itemToDelete.id);
-    } else {
+    } else if (itemToDelete.type === 'user' && onDeleteUser) {
       onDeleteUser(itemToDelete.id);
     }
     setItemToDelete(null);
@@ -377,9 +377,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                      <button onClick={() => handleOpenEditUser(u)} className="p-2 text-primary-500 hover:bg-surface rounded-lg transition-colors">
                                         <EditIcon />
                                      </button>
-                                     <button onClick={() => setItemToDelete({ type: 'user', id: u.id, name: u.name })} className="p-2 text-red-400 hover:bg-surface rounded-lg transition-colors">
-                                        <TrashIcon />
-                                     </button>
+                                      {onDeleteUser && (
+                                        <button onClick={() => setItemToDelete({ type: 'user', id: u.id, name: u.name })} className="p-2 text-red-400 hover:bg-surface rounded-lg transition-colors">
+                                           <TrashIcon />
+                                        </button>
+                                      )}
                                   </div>
                                </td>
                             </tr>
