@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Button } from './Button';
 
 interface LoginScreenProps {
-  onLogin: (identifier: string, password?: string) => Promise<void>;
+  onLogin: (identifier: string, password?: string) => void;
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
@@ -13,14 +13,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    try {
-      await onLogin(identifier, password);
-    } catch (error) {
-      // O erro será tratado/exibido pelo componente pai (App.tsx)
-      console.error(error);
-    } finally {
+    // Simulate network delay
+    setTimeout(() => {
+      onLogin(identifier, password);
       setIsLoading(false);
-    }
+    }, 1000);
   };
 
   return (
@@ -59,7 +56,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   className="input-base appearance-none block w-full px-4 py-3 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition-all"
-                  placeholder="email@loja.com"
+                  placeholder="email@loja.com ou 000.000.000-00"
                 />
               </div>
             </div>

@@ -4,7 +4,7 @@ import { CouponCard } from './CouponCard';
 import { Button } from './Button';
 import { Modal } from './Modal';
 import { CATEGORIES } from '../constants';
-import { BackendService } from '../services/backend';
+import { BackendService } from '../services/backend'; // Using Backend Service instead of Security directly
 import { AIService } from '../services/ai';
 
 const SearchIcon = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>;
@@ -643,7 +643,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
 
                        <div className="flex items-center gap-2 mb-6">
                           <div className="flex-1 bg-surface border border-border rounded-lg py-3 px-4 text-center overflow-hidden">
-                             <span className="font-mono text-xs sm:text-sm font-bold text-text-main tracking-wider truncate block">{selectedRedemption.code.substring(0, 12)}...</span>
+                             <span className="font-mono text-xl font-bold text-text-main tracking-widest">{selectedRedemption.code.substring(0, 12)}...</span>
                           </div>
                           <button 
                             onClick={() => handleCopyCode(selectedRedemption.code)}
@@ -678,7 +678,7 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
                           ) : (
                              <>
                                <div className="flex justify-between">
-                                  <span className="text-text-muted">Gerado em</span>
+                                  <span className="text-text-muted">Resgatado em</span>
                                   <span className="font-medium text-text-main">{new Date(selectedRedemption.redeemedAt).toLocaleDateString('pt-BR')}</span>
                                </div>
                                <div className="flex justify-between">
