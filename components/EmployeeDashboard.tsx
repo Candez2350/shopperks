@@ -3,9 +3,10 @@ import { Coupon, Store, User, Redemption, Badge } from '../types';
 import { CouponCard } from './CouponCard';
 import { Button } from './Button';
 import { Modal } from './Modal';
-import { CATEGORIES } from '../constants';
 import { BackendService } from '../services/backend'; // Using Backend Service instead of Security directly
 import { AIService } from '../services/ai';
+
+const CATEGORIES = ['Todos', 'Alimentação', 'Moda', 'Esportes', 'Serviços'];
 
 const SearchIcon = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>;
 const FilterIcon = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>;
@@ -56,11 +57,12 @@ interface EmployeeDashboardProps {
   stores: Store[];
   coupons: Coupon[];
   redemptions: Redemption[];
-  onRedeem: (couponId: string, token: string, redemptionId: string, updatedUser?: User) => void;
+  // TODO: Add a function to refresh redemptions from App.tsx
+  // onRedeemSuccess: () => void;
 }
 
 export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({ 
-  user, stores, coupons, redemptions, onRedeem 
+  user, stores, coupons, redemptions
 }) => {
   const [currentView, setCurrentView] = useState<'home' | 'my-coupons' | 'profile'>('home');
   const [selectedCategory, setSelectedCategory] = useState('Todos');
@@ -84,20 +86,19 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
   
   // Security / Token State
   const [secureToken, setSecureToken] = useState<string | null>(null);
-  const [tokenExpiry, setTokenExpiry] = useState<number | null>(null);
-  const [timeLeft, setTimeLeft] = useState<number>(0);
+  
+  // This client-side timer is no longer the source of truth, but can be kept for UX
+  const [timeLeft, setTimeLeft] = useState<number>(300);
 
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoadingFeed(false), 800); // Faster mock load due to "Cache"
+    const timer = setTimeout(() => setIsLoadingFeed(false), 800);
     
-    // Trigger Smart Push after 3 seconds (Simulation)
     const pushTimer = setTimeout(() => {
        const suggestion = AIService.getSmartSuggestion(user);
        if (suggestion) {
          setSmartPush(suggestion);
-         // Auto-hide after 8 seconds
          setTimeout(() => setSmartPush(null), 8000);
        }
     }, 3000);
@@ -105,20 +106,23 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
     return () => { clearTimeout(timer); clearTimeout(pushTimer); };
   }, [user]);
 
-  // Timer for QR Code Expiry
+  // Timer for QR Code Expiry UX
   useEffect(() => {
     let interval: any;
-    if (tokenExpiry) {
+    if (secureToken) {
+      setTimeLeft(300); // Reset timer
       interval = setInterval(() => {
-        const remaining = Math.max(0, Math.floor((tokenExpiry - Date.now()) / 1000));
-        setTimeLeft(remaining);
-        if (remaining === 0) {
-          // Token expired logic
-        }
+        setTimeLeft(prev => {
+          if (prev <= 1) {
+            clearInterval(interval);
+            return 0;
+          }
+          return prev - 1;
+        });
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [tokenExpiry]);
+  }, [secureToken]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -170,7 +174,6 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
     });
 
     result = result.sort((a, b) => {
-      // Prioritize Flash Deals (Dynamic Pricing)
       if (a.isFlashDeal && !b.isFlashDeal) return -1;
       if (!a.isFlashDeal && b.isFlashDeal) return 1;
 
@@ -195,28 +198,18 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
     if (!selectedCoupon) return;
     setIsRedeeming(true);
     try {
-      // UX Micro-interaction: Haptic Feedback
-      if (navigator.vibrate) navigator.vibrate(50); // Small bump on click
+      if (navigator.vibrate) navigator.vibrate(50);
 
-      // 1. Call Secure Backend
       const result = await BackendService.redeemCoupon(user.id, selectedCoupon.coupon.id);
       
-      // 2. UX Micro-interaction: Success Vibration
       if (navigator.vibrate) navigator.vibrate([100, 50, 100]); 
       
-      // 3. Update UI
-      const payload = JSON.parse(atob(result.token)).payload;
-      setSecureToken(result.token);
-      setTokenExpiry(payload.exp);
+      setSecureToken(result.token); // This is now the unique_code
       
-      // Fetch updated user to get the new badge if earned
-      let updatedUser;
-      if (result.badgeEarned) {
-         updatedUser = BackendService.getUserById(user.id);
-         setNewBadge(result.badgeEarned); // Trigger Celebration Modal
-      }
-
-      onRedeem(selectedCoupon.coupon.id, result.token, payload.rid, updatedUser);
+      // TODO: The UI is now out of sync. The `redemptions` prop needs to be updated.
+      // A proper solution would be to call a function passed from App.tsx to refetch the data.
+      // For now, the user has to manually refresh to see the new redemption in their wallet.
+      // setNewBadge(result.badgeEarned); // Gamification to be re-implemented
 
       if ((window as any).confetti) {
         (window as any).confetti({
@@ -228,9 +221,8 @@ export const EmployeeDashboard: React.FC<EmployeeDashboardProps> = ({
       }
     } catch (e: any) {
       console.error(e);
-      // UX: Error vibration
       if (navigator.vibrate) navigator.vibrate(300);
-      alert(e.message || "Erro ao gerar token seguro");
+      alert(e.message || "Erro ao resgatar cupom.");
     } finally {
       setIsRedeeming(false);
     }

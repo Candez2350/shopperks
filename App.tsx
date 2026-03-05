@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { STORES, COUPONS, MY_REDEMPTIONS, USERS } from './constants';
 import { Coupon, Store, User, UserRole, Redemption } from './types';
 import { LoginScreen } from './components/LoginScreen';
 import { EmployeeDashboard } from './components/EmployeeDashboard';
@@ -7,7 +6,7 @@ import { ManagerDashboard } from './components/ManagerDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
 import { ProfileModal } from './components/ProfileModal';
 import { BackendService } from './services/backend';
-import { AIService } from './services/ai';
+import { supabase } from './services/supabase';
 
 // Icons
 const MoonIcon = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>;
@@ -16,15 +15,29 @@ const SparklesIcon = () => <svg className="w-5 h-5" fill="none" stroke="currentC
 
 type Theme = 'dark' | 'emerald' | 'indigo';
 
+const LoadingScreen = () => (
+  <div className="min-h-screen bg-main flex items-center justify-center text-text-main">
+    <div className="flex items-center gap-2">
+      <svg className="animate-spin h-5 w-5 text-primary-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+      <span className="font-semibold">Carregando Ecossistema ShopPerks...</span>
+    </div>
+  </div>
+);
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [theme, setTheme] = useState<Theme>('indigo');
+  const [isLoading, setIsLoading] = useState(true);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
   
   // Global Data State
-  const [coupons, setCoupons] = useState<Coupon[]>(COUPONS);
-  const [redemptions, setRedemptions] = useState<Redemption[]>(MY_REDEMPTIONS);
-  const [stores, setStores] = useState<Store[]>(STORES);
-  const [users, setUsers] = useState<User[]>(USERS);
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const [redemptions, setRedemptions] = useState<Redemption[]>([]);
+  const [stores, setStores] = useState<Store[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
 
   // UI State
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -35,127 +48,141 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
-  // Initial Data Load (Simulating App Launch)
+  // Auth Listener
+  useEffect(() => {
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        // Fetch user profile from our public 'users' table
+        const profile = await BackendService.getUserById(session.user.id);
+        setUser(profile as User);
+      } else {
+        setUser(null);
+      }
+      setSessionLoaded(true);
+    });
+
+    // Initial session check
+    const checkSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (data?.session?.user) {
+        const profile = await BackendService.getUserById(data.session.user.id);
+        setUser(profile as User);
+      }
+      setSessionLoaded(true);
+    };
+    checkSession();
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  // Initial Data Load from Supabase
   useEffect(() => {
     const initData = async () => {
-      // 1. Fetch coupons with Caching via Backend Service
-      const fetchedCoupons = await BackendService.getCoupons();
-      // 2. Enhance with AI (Dynamic Pricing)
-      const smartCoupons = AIService.enrichCouponsWithDynamicPricing(fetchedCoupons);
-      setCoupons(smartCoupons);
-      
-      setStores(BackendService.getStores());
-      setUsers(BackendService.getUsers());
+      try {
+        const [fetchedCoupons, fetchedStores, fetchedUsers] = await Promise.all([
+          BackendService.getCoupons(),
+          BackendService.getStores(),
+          BackendService.getUsers(),
+        ]);
+        
+        setCoupons(fetchedCoupons);
+        setStores(fetchedStores as Store[]);
+        setUsers(fetchedUsers as User[]);
+
+      } catch (error) {
+        console.error("Failed to load initial data:", error);
+      } finally {
+        setIsLoading(false);
+      }
     };
     initData();
   }, []);
 
-  const handleLogin = async (identifier: string) => {
-    const id = identifier.toLowerCase();
-    const foundUser = users.find(u => u.email === id);
-    
-    if (foundUser) {
-      setUser(foundUser);
-      // Load user specific redemptions secureley
-      // Note: In real app this would be an API call with Auth Token
-      // Here we simulate fetching 'my' redemptions via the service
-      BackendService.getUserRedemptions(foundUser.id, foundUser.id, foundUser.role)
-        .then(data => setRedemptions(data))
-        .catch(err => console.error(err));
-    } else {
-      // Fallback for demo ease if exact email isn't typed
-      if (id.includes('admin')) setUser(users.find(u => u.role === UserRole.ADMIN) || null);
-      else if (id.includes('zara')) setUser(users.find(u => u.role === UserRole.MANAGER) || null);
-      else setUser(users.find(u => u.role === UserRole.EMPLOYEE) || null);
-    }
+  const handleLogin = async (email: string, password?: string) => {
+    if (!password) return { error: { message: "Senha é obrigatória." }};
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    return { error };
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     setUser(null);
   };
 
   // --- Actions ---
-  // Note: These handlers mimic state updates for the UI, 
-  // but in a real app the BackendService would persist changes to DB.
-
-  // Store Management Actions
   const handleAddStore = async (newStoreData: Omit<Store, 'id'>) => {
-    const newStore: Store = { ...newStoreData, id: `s${Date.now()}` };
-    setStores([...stores, newStore]);
+    try {
+      const newStore = await BackendService.addStore(newStoreData);
+      setStores(current => [...current, newStore]);
+    } catch (error) { console.error("Failed to add store:", error); }
   };
 
-  const handleUpdateStore = async (updatedStore: Store) => {
-    setStores(stores.map(s => s.id === updatedStore.id ? updatedStore : s));
+  const handleUpdateStore = async (updatedStoreData: Store) => {
+    try {
+      const updatedStore = await BackendService.updateStore(updatedStoreData);
+      setStores(current => current.map(s => s.id === updatedStore.id ? updatedStore : s));
+    } catch (error) { console.error("Failed to update store:", error); }
   };
 
   const handleDeleteStore = async (storeId: string) => {
-    setStores(stores.filter(s => s.id !== storeId));
+    try {
+      await BackendService.deleteStore(storeId);
+      setStores(current => current.filter(s => s.id !== storeId));
+    } catch (error) { console.error("Failed to delete store:", error); }
   };
 
-  // User Management Actions
   const handleAddUser = async (newUserData: Omit<User, 'id'>) => {
-    const newUser: User = { ...newUserData, id: `u${Date.now()}` };
-    setUsers([...users, newUser]);
+    try {
+      const newUser = await BackendService.addUser(newUserData);
+      setUsers(current => [...current, newUser]);
+    } catch (error) { console.error("Failed to add user:", error); }
   };
 
-  const handleUpdateUser = async (updatedUser: User) => {
-    setUsers(users.map(u => u.id === updatedUser.id ? updatedUser : u));
-    if (user && user.id === updatedUser.id) {
-       setUser(updatedUser);
-    }
+  const handleUpdateUser = async (updatedUserData: User) => {
+    try {
+      const updatedUser = await BackendService.updateUser(updatedUserData);
+      setUsers(current => current.map(u => u.id === updatedUser.id ? updatedUser : u));
+      if (user && user.id === updatedUser.id) {
+        setUser(updatedUser);
+      }
+    } catch (error) { console.error("Failed to update user:", error); }
   };
 
   const handleDeleteUser = async (userId: string) => {
-    setUsers(users.filter(u => u.id !== userId));
+    try {
+      await BackendService.deleteUser(userId);
+      setUsers(current => current.filter(u => u.id !== userId));
+    } catch (error) { console.error("Failed to delete user:", error); }
   };
 
-  const handleProfileUpdate = async (data: Partial<User> & { password?: string }) => {
+  const handleProfileUpdate = async (data: Partial<User>) => {
     if (!user) return;
-    const updatedUser = { ...user, ...data };
-    delete (updatedUser as any).password;
-    setUsers(users.map(u => u.id === user.id ? updatedUser : u));
-    setUser(updatedUser);
+    // TODO: Add password update logic via supabase.auth.updateUser
+    const updatedUserData = { ...user, ...data };
+    await handleUpdateUser(updatedUserData as User);
   };
 
   const handleCreateCoupon = async (couponData: Omit<Coupon, 'id'>) => {
-    const newCoupon: Coupon = { ...couponData, id: `new_${Date.now()}` };
-    setCoupons(prev => [newCoupon, ...prev]);
+    try {
+      const newCoupon = await BackendService.createCoupon(couponData);
+      setCoupons(prev => [newCoupon, ...prev]);
+    } catch (error) { console.error("Failed to create coupon:", error); }
   };
 
   const handleDeleteCoupon = async (couponId: string) => {
-    setCoupons(prev => prev.filter(c => c.id !== couponId));
+    try {
+      await BackendService.deleteCoupon(couponId);
+      setCoupons(prev => prev.filter(c => c.id !== couponId));
+    } catch (error) { console.error("Failed to delete coupon:", error); }
   };
 
-  // The redeeming process is now handled via BackendService in EmployeeDashboard
-  // This handler just updates the LOCAL state to reflect the change in the UI
-  const handleRedeemUpdate = (couponId: string, token: string, redemptionId: string, updatedUser?: User) => {
-    if (user) {
-      setRedemptions(prev => [{
-        id: redemptionId, 
-        couponId,
-        userId: user.id,
-        code: token,
-        status: 'PENDING',
-        redeemedAt: new Date().toISOString()
-      }, ...prev]);
 
-      if (updatedUser) {
-        setUser(updatedUser);
-      }
-    }
-  };
 
-  const handleValidateRedemption = (redemptionId: string): boolean => {
-    const redemption = redemptions.find(r => r.id === redemptionId && r.status === 'PENDING');
-    
-    if (redemption) {
-      setRedemptions(prev => prev.map(r => 
-        r.id === redemption.id ? { ...r, status: 'USED', validatedAt: new Date().toISOString(), validatedBy: user?.name } : r
-      ));
-      return true;
-    }
-    return false;
-  };
+  if (isLoading || !sessionLoaded) {
+    return <LoadingScreen />;
+  }
 
   if (!user) {
     return <LoginScreen onLogin={handleLogin} />;
@@ -225,7 +252,6 @@ export default function App() {
             stores={stores} 
             coupons={coupons} 
             redemptions={redemptions.filter(r => r.userId === user.id)}
-            onRedeem={handleRedeemUpdate} 
           />
         )}
 
@@ -237,7 +263,6 @@ export default function App() {
             redemptions={redemptions}
             onCreateCoupon={handleCreateCoupon}
             onDeleteCoupon={handleDeleteCoupon}
-            onValidateRedemption={handleValidateRedemption}
           />
         )}
 

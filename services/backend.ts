@@ -1,171 +1,183 @@
-import { Coupon, Redemption, User, Badge } from '../types';
-import { COUPONS, MY_REDEMPTIONS, STORES, USERS } from '../constants';
-import { SecurityService } from './security';
-import { CacheService } from './cache';
+import { Coupon, Redemption, User, Badge, Store } from '../types';
+import { supabase } from './supabase';
 
-// This service simulates a secure Backend API + Database
-// It replaces direct access to constants in the UI components
-// enforcing security rules and atomic operations.
-
-// In-memory Database State (initialized from constants)
-let dbCoupons = [...COUPONS];
-let dbRedemptions = [...MY_REDEMPTIONS];
-let dbUsers = JSON.parse(JSON.stringify(USERS)); // Deep copy to allow updates
-const dbStores = [...STORES];
+// This service interacts with the Supabase Backend
+// It abstracts all database operations for the application.
 
 export const BackendService = {
   
-  // 1. Scalability: Fetch Coupons with Caching Strategy
   async getCoupons(): Promise<Coupon[]> {
-    const CACHE_KEY = 'feed:coupons:all';
-    
-    // Try Cache First (Redis)
-    const cached = CacheService.get<Coupon[]>(CACHE_KEY);
-    if (cached) return cached;
-
-    // Simulate DB Latency
-    // await new Promise(r => setTimeout(r, 300));
-
-    // Database Fetch
-    const coupons = [...dbCoupons];
-    
-    // Write to Cache
-    CacheService.set(CACHE_KEY, coupons, 30); // 30s TTL
-    return coupons;
+    const { data, error } = await supabase.from('coupons').select('*');
+    if (error) {
+      console.error("Error fetching coupons:", error);
+      throw error;
+    }
+    // The Coupon type in types.ts might need adjustments
+    // to perfectly match the Supabase table (e.g., availableQuantity vs current_usage).
+    // For now, we'll do a simple mapping.
+    return data.map(c => ({
+      ...c,
+      availableQuantity: c.max_usage - c.current_usage,
+      expiryDate: c.end_date,
+    })) as Coupon[];
+  },
+  
+  async getStores(): Promise<Store[]> {
+    const { data, error } = await supabase.from('stores').select('*');
+    if (error) {
+      console.error("Error fetching stores:", error);
+      throw error;
+    }
+    return data;
+  },
+  
+  async getUsers(): Promise<User[]> {
+    const { data, error } = await supabase.from('users').select('*');
+    if (error) {
+      console.error("Error fetching users:", error);
+      throw error;
+    }
+    return data;
+  },
+  
+  async getUserById(id: string): Promise<User | null> {
+     const { data, error } = await supabase.from('users').select('*').eq('id', id).single();
+     if (error) {
+       console.error("Error fetching user by id:", error);
+       // Don't throw if it's just 'not found', return null
+       if (error.code === 'PGRST116') return null; 
+       throw error;
+     }
+     return data;
   },
 
-  // 2. Security: Atomic Redemption (Fixes Race Condition & Overselling)
+  // --- CRUD Functions ---
+
+  // Stores
+  async addStore(storeData: Omit<Store, 'id'>): Promise<Store> {
+    const { data, error } = await supabase.from('stores').insert(storeData).select().single();
+    if (error) throw error;
+    return data;
+  },
+  async updateStore(storeData: Partial<Store> & { id: string }): Promise<Store> {
+    const { data, error } = await supabase.from('stores').update(storeData).eq('id', storeData.id).select().single();
+    if (error) throw error;
+    return data;
+  },
+  async deleteStore(storeId: string): Promise<void> {
+    const { error } = await supabase.from('stores').delete().eq('id', storeId);
+    if (error) throw error;
+  },
+
+  // Users
+  async addUser(userData: Omit<User, 'id'>): Promise<User> {
+    console.warn("Security Warning: Creating a user profile without creating an auth user. The new user will not be able to log in.");
+    const { data, error } = await supabase.from('users').insert(userData).select().single();
+    if (error) throw error;
+    return data;
+  },
+  async updateUser(userData: Partial<User> & { id: string }): Promise<User> {
+    const { data, error } = await supabase.from('users').update(userData).eq('id', userData.id).select().single();
+    if (error) throw error;
+    return data;
+  },
+  async deleteUser(userId: string): Promise<void> {
+    console.warn("Security Warning: Deleting a user profile does not delete the corresponding auth.user from Supabase.");
+    const { error } = await supabase.from('users').delete().eq('id', userId);
+    if (error) throw error;
+  },
+
+  // Coupons
+  async createCoupon(couponData: Omit<Coupon, 'id'>): Promise<Coupon> {
+    const { data, error } = await supabase.from('coupons').insert(couponData).select().single();
+    if (error) throw error;
+    return data as Coupon;
+  },
+  async deleteCoupon(couponId: string): Promise<void> {
+    const { error } = await supabase.from('coupons').delete().eq('id', couponId);
+    if (error) throw error;
+  },
+
+
   async redeemCoupon(userId: string, couponId: string): Promise<{ token: string, redemption: Redemption, badgeEarned?: Badge }> {
-    // Simulate Network Latency
-    await new Promise(r => setTimeout(r, 500));
+    const { data, error } = await supabase.rpc('redeem_coupon', {
+      p_user_id: userId,
+      p_coupon_id: couponId
+    });
 
-    // A. Check Coupon Existence
-    const couponIndex = dbCoupons.findIndex(c => c.id === couponId);
-    if (couponIndex === -1) throw new Error("Cupom não encontrado.");
-    const coupon = dbCoupons[couponIndex];
-
-    // B. Critical Section (Atomic Check)
-    if (coupon.availableQuantity <= 0) {
-      throw new Error("Esgotado! Você perdeu por pouco.");
+    if (error) {
+      console.error("Error redeeming coupon:", error);
+      // Friendly error messages
+      if (error.message.includes('CUPOM_ESGOTADO')) throw new Error('Este cupom esgotou!');
+      if (error.message.includes('LIMITE_DE_USO_ATINGIDO')) throw new Error('Você já atingiu o limite de uso para este cupom.');
+      throw new Error('Não foi possível resgatar o cupom.');
     }
 
-    // C. Check User Limits (Business Logic)
-    const userUsage = dbRedemptions.filter(r => r.userId === userId && r.couponId === couponId).length;
-    if (userUsage >= coupon.maxUsesPerUser) {
-      throw new Error("Limite de uso por pessoa atingido.");
-    }
-
-    // D. Atomic Decrement (Write)
-    dbCoupons[couponIndex] = {
-      ...coupon,
-      availableQuantity: coupon.availableQuantity - 1
-    };
-    
-    // Invalidate Cache since stock changed
-    CacheService.invalidate('feed:coupons:all');
-
-    // E. Generate Secure Token (Server-side Only)
-    const token = await SecurityService.generateToken(couponId, userId);
-    const payload = JSON.parse(atob(token)).payload;
-
-    // F. Persist Redemption
-    const newRedemption: Redemption = {
-      id: payload.rid,
-      couponId,
-      userId,
-      code: token,
-      status: 'PENDING',
-      redeemedAt: new Date().toISOString()
-    };
-    dbRedemptions.unshift(newRedemption);
-
-    // G. Gamification Logic (Persisted)
-    const userTotalRedemptions = dbRedemptions.filter(r => r.userId === userId).length;
-    let badgeEarned: Badge | undefined = undefined;
-
-    // Logic: First Redemption
-    if (userTotalRedemptions === 1) {
-       badgeEarned = {
-         id: 'b_first',
-         name: 'Primeira Compra',
-         icon: '🛍️',
-         description: 'Realizou o primeiro resgate de cupom.',
-         earnedAt: new Date().toISOString()
-       };
-    }
-    // Logic: 5th Redemption
-    else if (userTotalRedemptions === 5) {
-       badgeEarned = {
-         id: 'b_explorer',
-         name: 'Explorador de Ofertas',
-         icon: '🧭',
-         description: 'Resgatou 5 cupons no total.',
-         earnedAt: new Date().toISOString()
-       };
-    }
-    // Logic: 10th Redemption
-    else if (userTotalRedemptions === 10) {
-       badgeEarned = {
-         id: 'b_vip',
-         name: 'Cliente VIP',
-         icon: '👑',
-         description: 'Resgatou 10 cupons. Você é uma lenda!',
-         earnedAt: new Date().toISOString()
-       };
-    }
-
-    if (badgeEarned) {
-      const uIndex = dbUsers.findIndex((u: User) => u.id === userId);
-      if (uIndex !== -1) {
-        if (!dbUsers[uIndex].badges) dbUsers[uIndex].badges = [];
-        // Prevent duplicate badges
-        if (!dbUsers[uIndex].badges.find((b: Badge) => b.id === badgeEarned!.id)) {
-           dbUsers[uIndex].badges.push(badgeEarned);
-        } else {
-           badgeEarned = undefined; // Already has it
-        }
-      }
-    }
-
-    return { token, redemption: newRedemption, badgeEarned };
+    // Omit badgeEarned for now as it's not in the DB schema
+    return { token: (data as Redemption).unique_code, redemption: data as Redemption };
   },
 
-  // 3. Security: Anti-IDOR (Insecure Direct Object Reference)
   async getUserRedemptions(requestingUserId: string, targetUserId: string, role: string): Promise<Redemption[]> {
     if (role !== 'ADMIN' && requestingUserId !== targetUserId) {
       throw new Error("Acesso negado: Você não pode visualizar a carteira de outro usuário.");
     }
-    return dbRedemptions.filter(r => r.userId === targetUserId);
+    
+    const { data, error } = await supabase
+      .from('redemptions')
+      .select('*')
+      .eq('user_id', targetUserId)
+      .order('redeemed_at', { ascending: false });
+
+    if (error) {
+      console.error("Error fetching user redemptions:", error);
+      throw error;
+    }
+    return data;
   },
 
-  // 4. Security: Validation Logic
-  async validateRedemption(rid: string, managerStoreId: string): Promise<boolean> {
-    const redemptionIndex = dbRedemptions.findIndex(r => r.id === rid);
-    if (redemptionIndex === -1) return false;
+  async validateRedemption(uniqueCode: string, managerUserId: string): Promise<boolean> {
+    // 1. Get manager's store_id
+    const { data: manager, error: managerError } = await supabase.from('users').select('store_id').eq('id', managerUserId).single();
+    if (managerError || !manager?.store_id) throw new Error("Gerente não encontrado ou não associado a uma loja.");
 
-    const redemption = dbRedemptions[redemptionIndex];
-    
-    // Logic Check: Does this coupon belong to the Manager's store?
-    const coupon = dbCoupons.find(c => c.id === redemption.couponId);
-    if (!coupon || coupon.storeId !== managerStoreId) {
-       throw new Error("Este cupom não pertence à sua loja.");
+    // 2. Find the redemption by its unique code
+    const { data: redemption, error: redemptionError } = await supabase
+      .from('redemptions')
+      .select('id, status, coupon_id, coupons ( store_id )')
+      .eq('unique_code', uniqueCode)
+      .single();
+
+    if (redemptionError || !redemption) {
+      console.error("Validation Error: Redemption not found or query failed.", redemptionError);
+      return false;
     }
 
-    if (redemption.status !== 'PENDING') return false;
+    // 3. Perform validation checks
+    // @ts-ignore
+    if (redemption.coupons?.store_id !== manager.store_id) {
+      throw new Error("Este cupom não pertence à sua loja.");
+    }
 
-    dbRedemptions[redemptionIndex] = {
-      ...redemption,
-      status: 'USED',
-      validatedAt: new Date().toISOString(),
-      validatedBy: 'Gerente (App)'
-    };
-    
+    if (redemption.status !== 'PENDING') {
+      console.warn(`Attempted to validate an already processed coupon: ID ${redemption.id}, Status: ${redemption.status}`);
+      return false;
+    }
+
+    // 4. Update the redemption status to 'USED'
+    const { error: updateError } = await supabase
+      .from('redemptions')
+      .update({ 
+        status: 'USED', 
+        validated_at: new Date().toISOString(),
+        validated_by: managerUserId // Storing manager's ID
+      })
+      .eq('id', redemption.id);
+
+    if (updateError) {
+      console.error("Error updating redemption status:", updateError);
+      throw updateError;
+    }
+
     return true;
   },
-  
-  // Helper for mock data initialization
-  getStores: () => dbStores,
-  getUsers: () => dbUsers,
-  // Helper to re-fetch user data (e.g. after earning a badge)
-  getUserById: (id: string) => dbUsers.find((u: User) => u.id === id)
 };

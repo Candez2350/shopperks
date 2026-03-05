@@ -3,7 +3,8 @@ import { Store, User, UserRole, Redemption, Coupon } from '../types';
 import { Button } from './Button';
 import { Modal } from './Modal';
 import { ConfirmationModal } from './ConfirmationModal';
-import { CATEGORIES } from '../constants';
+
+const CATEGORIES = ['Todos', 'Alimentação', 'Moda', 'Esportes', 'Serviços'];
 
 interface AdminDashboardProps {
   stores: Store[];

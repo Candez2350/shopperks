@@ -2,23 +2,38 @@ import React, { useState } from 'react';
 import { Button } from './Button';
 
 interface LoginScreenProps {
-  onLogin: (identifier: string, password?: string) => void;
+  onLogin: (email: string, password?: string) => Promise<{ error: any } | null>;
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
-  const [identifier, setIdentifier] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    // Simulate network delay
-    setTimeout(() => {
-      onLogin(identifier, password);
-      setIsLoading(false);
-    }, 1000);
+    setError(null);
+    
+    const result = await onLogin(email, password);
+
+    if (result?.error) {
+      setError(result.error.message === 'Invalid login credentials' ? 'E-mail ou senha inválidos.' : result.error.message);
+    }
+    
+    setIsLoading(false);
   };
+
+  const handleIdentifierChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setError(null);
+    setEmail(e.target.value);
+  }
+
+  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setError(null);
+    setPassword(e.target.value);
+  }
 
   return (
     <div className="min-h-screen bg-main flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
@@ -44,19 +59,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
         <div className="glass-panel py-8 px-4 shadow-2xl sm:rounded-2xl sm:px-10">
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div>
-              <label htmlFor="identifier" className="block text-sm font-medium text-text-main">
-                E-mail ou CPF
+              <label htmlFor="email" className="block text-sm font-medium text-text-main">
+                E-mail
               </label>
               <div className="mt-1">
                 <input
-                  id="identifier"
-                  name="identifier"
-                  type="text"
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
                   required
-                  value={identifier}
-                  onChange={(e) => setIdentifier(e.target.value)}
+                  value={email}
+                  onChange={handleIdentifierChange}
                   className="input-base appearance-none block w-full px-4 py-3 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition-all"
-                  placeholder="email@loja.com ou 000.000.000-00"
+                  placeholder="seu@email.com"
                 />
               </div>
             </div>
@@ -73,12 +89,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
                   autoComplete="current-password"
                   required
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={handlePasswordChange}
                   className="input-base appearance-none block w-full px-4 py-3 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition-all"
                   placeholder="••••••••"
                 />
               </div>
             </div>
+            
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm font-semibold p-3 rounded-xl">
+                {error}
+              </div>
+            )}
 
             <div>
               <Button fullWidth type="submit" disabled={isLoading} className="justify-center">
@@ -107,21 +129,21 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             <div className="mt-6 grid grid-cols-1 gap-3">
                <button 
                  type="button"
-                 onClick={() => { setIdentifier('ana@shopp.com'); setPassword('123'); }}
+                 onClick={() => { setEmail('ana@shopp.com'); setPassword('password123'); setError(null); }}
                  className="w-full inline-flex justify-center py-2 px-4 border border-border rounded-lg shadow-sm bg-surface/50 text-xs font-medium text-text-muted hover:bg-primary-500 hover:text-white transition-colors"
                >
                  Funcionário (ana@shopp.com)
                </button>
                <button 
                  type="button"
-                 onClick={() => { setIdentifier('zara@shopp.com'); setPassword('123'); }}
+                 onClick={() => { setEmail('zara@shopp.com'); setPassword('password123'); setError(null); }}
                  className="w-full inline-flex justify-center py-2 px-4 border border-border rounded-lg shadow-sm bg-surface/50 text-xs font-medium text-text-muted hover:bg-primary-500 hover:text-white transition-colors"
                >
                  Gerente (zara@shopp.com)
                </button>
                <button 
                  type="button"
-                 onClick={() => { setIdentifier('admin@shopp.com'); setPassword('123'); }}
+                 onClick={() => { setEmail('admin@shopp.com'); setPassword('password123'); setError(null); }}
                  className="w-full inline-flex justify-center py-2 px-4 border border-border rounded-lg shadow-sm bg-surface/50 text-xs font-medium text-text-muted hover:bg-primary-500 hover:text-white transition-colors"
                >
                  Admin (admin@shopp.com)

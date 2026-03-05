@@ -4,7 +4,7 @@ import { Button } from './Button';
 import { Modal } from './Modal';
 import { ConfirmationModal } from './ConfirmationModal';
 import { Html5QrcodeScanner } from 'html5-qrcode';
-import { SecurityService } from '../services/security';
+import { BackendService } from '../services/backend';
 
 interface ManagerDashboardProps {
   user: User;
@@ -13,7 +13,6 @@ interface ManagerDashboardProps {
   redemptions: Redemption[];
   onCreateCoupon: (coupon: Omit<Coupon, 'id'>) => void;
   onDeleteCoupon: (couponId: string) => void;
-  onValidateRedemption: (code: string) => boolean;
 }
 
 const BackIcon = () => (
@@ -36,7 +35,7 @@ const Spinner = () => (
 );
 
 export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
-  user, store, coupons, redemptions, onCreateCoupon, onDeleteCoupon, onValidateRedemption
+  user, store, coupons, redemptions, onCreateCoupon, onDeleteCoupon
 }) => {
   const [view, setView] = useState<'overview' | 'manage' | 'validate'>('overview');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -44,7 +43,7 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
   
   // Validation State
   const [validationCode, setValidationCode] = useState('');
-  const [validationResult, setValidationResult] = useState<'idle' | 'success' | 'error' | 'expired'>('idle');
+  const [validationResult, setValidationResult] = useState<'idle' | 'success' | 'error'>('idle');
   const [validationMessage, setValidationMessage] = useState('');
   const [isValidating, setIsValidating] = useState(false);
   
@@ -132,35 +131,28 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
   const handleValidate = async (e?: React.FormEvent, codeOverride?: string) => {
     if (e) e.preventDefault();
     const codeToTest = codeOverride || validationCode;
+    if (!codeToTest) return;
     
     setIsValidating(true);
     setValidationResult('idle');
 
-    // 1. Verify Crypto Signature
-    const verification = await SecurityService.verifyToken(codeToTest);
-
-    if (!verification.valid) {
-      setIsValidating(false);
-      setValidationResult(verification.reason === 'EXPIRED' ? 'expired' : 'error');
-      setValidationMessage(verification.reason === 'EXPIRED' ? 'QR Code Expirado. Peça para o funcionário gerar um novo.' : 'QR Code Inválido ou Adulterado.');
-      return;
-    }
-
-    // 2. If valid, check Redemption ID in "Database"
-    // In our mock, we are looking for the redemption ID that matches the token's rid
-    setTimeout(() => {
-      // Logic adapter: we pass the rid (Redemption ID) to the app handler
-      const success = onValidateRedemption(verification.data!.rid);
+    try {
+      const success = await BackendService.validateRedemption(codeToTest, user.id);
       
       if (success) {
         setValidationResult('success');
         setValidationMessage('Cupom validado com sucesso!');
+        // TODO: Refresh the redemptions list in App.tsx to show this as USED.
       } else {
         setValidationResult('error');
-        setValidationMessage('Cupom já utilizado ou não encontrado.');
+        setValidationMessage('Código inválido ou cupom já utilizado.');
       }
+    } catch (error: any) {
+      setValidationResult('error');
+      setValidationMessage(error.message || 'Ocorreu um erro inesperado.');
+    } finally {
       setIsValidating(false);
-    }, 600);
+    }
   };
 
   const handleDeleteConfirm = () => {
@@ -169,7 +161,7 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
       setCouponToDelete(null);
     }
   };
-
+  
   const inputClasses = "input-base w-full px-3 py-3 rounded-xl transition-all focus:outline-none";
 
   return (
@@ -371,7 +363,6 @@ export const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
            {validationResult !== 'idle' && (
              <div className={`mt-6 p-4 rounded-xl text-center border ${
                  validationResult === 'success' ? 'bg-green-500/20 text-green-500 border-green-500/30' : 
-                 validationResult === 'expired' ? 'bg-orange-500/20 text-orange-500 border-orange-500/30' :
                  'bg-red-500/20 text-red-500 border-red-500/30'
                } animate-fade-in`}>
                {validationResult === 'success' ? (
