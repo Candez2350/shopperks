@@ -1,65 +1,63 @@
--- Tabela de Lojas
-CREATE TABLE stores (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name VARCHAR(255) NOT NULL,
-    category VARCHAR(100) NOT NULL,
-    logo_url TEXT,
-    cover_url TEXT,
-    floor VARCHAR(50),
-    active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
 
--- Tabela de Usuários (Funcionários, Gerentes, Admin)
-CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    store_id UUID REFERENCES stores(id), -- Null se for Admin do Shopping
-    name VARCHAR(255) NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    role VARCHAR(50) CHECK (role IN ('ADMIN', 'MANAGER', 'EMPLOYEE')),
-    avatar_url TEXT,
-    active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE public.coupon_rules (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  coupon_id uuid,
+  rule_text text NOT NULL,
+  CONSTRAINT coupon_rules_pkey PRIMARY KEY (id),
+  CONSTRAINT coupon_rules_coupon_id_fkey FOREIGN KEY (coupon_id) REFERENCES public.coupons(id)
 );
-
--- Tabela de Cupons
-CREATE TABLE coupons (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    store_id UUID REFERENCES stores(id) NOT NULL,
-    title VARCHAR(150) NOT NULL,
-    description TEXT,
-    discount_type VARCHAR(20) CHECK (discount_type IN ('PERCENTAGE', 'FIXED')),
-    discount_value DECIMAL(10, 2) NOT NULL,
-    start_date TIMESTAMP WITH TIME ZONE NOT NULL,
-    end_date TIMESTAMP WITH TIME ZONE NOT NULL,
-    max_usage INTEGER, -- Quantidade total disponível
-    current_usage INTEGER DEFAULT 0,
-    max_uses_per_user INTEGER DEFAULT 1, -- Limite de resgates por usuário
-    active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE public.coupons (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  store_id uuid NOT NULL,
+  title character varying NOT NULL,
+  description text,
+  discount_type character varying CHECK (discount_type::text = ANY (ARRAY['PERCENTAGE'::character varying, 'FIXED'::character varying]::text[])),
+  discount_value numeric NOT NULL,
+  start_date timestamp with time zone NOT NULL,
+  end_date timestamp with time zone NOT NULL,
+  max_usage integer,
+  current_usage integer DEFAULT 0,
+  max_uses_per_user integer DEFAULT 1,
+  active boolean DEFAULT true,
+  created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT coupons_pkey PRIMARY KEY (id),
+  CONSTRAINT coupons_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id)
 );
-
--- Tabela de Regras do Cupom (Opcional, normalização para listas de regras)
-CREATE TABLE coupon_rules (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    coupon_id UUID REFERENCES coupons(id) ON DELETE CASCADE,
-    rule_text TEXT NOT NULL
+CREATE TABLE public.redemptions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  coupon_id uuid,
+  user_id uuid,
+  unique_code character varying NOT NULL UNIQUE,
+  status character varying DEFAULT 'PENDING'::character varying CHECK (status::text = ANY (ARRAY['PENDING'::character varying, 'USED'::character varying, 'EXPIRED'::character varying]::text[])),
+  redeemed_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+  validated_at timestamp with time zone,
+  CONSTRAINT redemptions_pkey PRIMARY KEY (id),
+  CONSTRAINT redemptions_coupon_id_fkey FOREIGN KEY (coupon_id) REFERENCES public.coupons(id),
+  CONSTRAINT redemptions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
-
--- Tabela de Resgates (Carteira do Funcionário)
-CREATE TABLE redemptions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    coupon_id UUID REFERENCES coupons(id),
-    user_id UUID REFERENCES users(id),
-    unique_code VARCHAR(50) UNIQUE NOT NULL, -- O código para o QR Code
-    status VARCHAR(20) DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'VALIDATED', 'EXPIRED')),
-    status VARCHAR(20) DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'USED', 'EXPIRED')),
-    redeemed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    validated_at TIMESTAMP WITH TIME ZONE
+CREATE TABLE public.stores (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name character varying NOT NULL,
+  category character varying NOT NULL,
+  logo_url text,
+  cover_url text,
+  floor character varying,
+  active boolean DEFAULT true,
+  created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT stores_pkey PRIMARY KEY (id)
 );
-
--- Índices para performance
-CREATE INDEX idx_coupons_store ON coupons(store_id);
-CREATE INDEX idx_coupons_validity ON coupons(end_date);
-CREATE INDEX idx_redemptions_user ON redemptions(user_id);
+CREATE TABLE public.users (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  store_id uuid,
+  name character varying NOT NULL,
+  email character varying NOT NULL UNIQUE,
+  password_hash character varying NOT NULL,
+  role character varying CHECK (role::text = ANY (ARRAY['ADMIN'::character varying, 'MANAGER'::character varying, 'EMPLOYEE'::character varying]::text[])),
+  active boolean DEFAULT true,
+  created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+  avatar_url text,
+  CONSTRAINT users_pkey PRIMARY KEY (id),
+  CONSTRAINT users_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id)
+);
