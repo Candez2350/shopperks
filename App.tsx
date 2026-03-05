@@ -50,11 +50,17 @@ export default function App() {
 
   // Auth Listener
   useEffect(() => {
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
-        // Fetch user profile from our public 'users' table
-        const profile = await BackendService.getUserById(session.user.id);
-        setUser(profile as User);
+        const profile = await BackendService.getUserByEmail(session.user.email!);
+        if (profile) {
+          setUser(profile);
+        } else {
+          console.error("Login failed: User profile not found for email:", session.user.email);
+          setUser(null);
+          // Optional: You might want to sign out the user if their profile is missing
+          // await supabase.auth.signOut();
+        }
       } else {
         setUser(null);
       }
@@ -65,8 +71,12 @@ export default function App() {
     const checkSession = async () => {
       const { data } = await supabase.auth.getSession();
       if (data?.session?.user) {
-        const profile = await BackendService.getUserById(data.session.user.id);
-        setUser(profile as User);
+        const profile = await BackendService.getUserByEmail(data.session.user.email!);
+        if (profile) {
+          setUser(profile);
+        } else {
+          setUser(null);
+        }
       }
       setSessionLoaded(true);
     };
@@ -81,15 +91,17 @@ export default function App() {
   useEffect(() => {
     const initData = async () => {
       try {
-        const [fetchedCoupons, fetchedStores, fetchedUsers] = await Promise.all([
+        const [fetchedCoupons, fetchedStores, fetchedUsers, fetchedRedemptions] = await Promise.all([
           BackendService.getCoupons(),
           BackendService.getStores(),
           BackendService.getUsers(),
+          BackendService.getRedemptions(),
         ]);
         
         setCoupons(fetchedCoupons);
         setStores(fetchedStores as Store[]);
         setUsers(fetchedUsers as User[]);
+        setRedemptions(fetchedRedemptions as Redemption[]);
 
       } catch (error) {
         console.error("Failed to load initial data:", error);
@@ -188,6 +200,56 @@ export default function App() {
     return <LoginScreen onLogin={handleLogin} />;
   }
 
+  const renderDashboard = () => {
+    switch (user.role) {
+      case UserRole.EMPLOYEE:
+        return (
+          <EmployeeDashboard 
+            user={user} 
+            stores={stores} 
+            coupons={coupons} 
+            redemptions={redemptions.filter(r => r.userId === user.id)}
+          />
+        );
+      case UserRole.MANAGER: {
+        if (!user.storeId) {
+          return <div className="text-center p-8">Erro: Gerente não associado a uma loja.</div>;
+        }
+        const store = stores.find(s => s.id === user.storeId);
+        if (!store) {
+          return <div className="text-center p-8">Carregando dados da loja...</div>;
+        }
+        return (
+          <ManagerDashboard 
+            user={user}
+            store={store}
+            coupons={coupons}
+            redemptions={redemptions}
+            onCreateCoupon={handleCreateCoupon}
+            onDeleteCoupon={handleDeleteCoupon}
+          />
+        );
+      }
+      case UserRole.ADMIN:
+        return (
+          <AdminDashboard 
+            stores={stores} 
+            users={users} 
+            coupons={coupons}
+            redemptions={redemptions}
+            onAddStore={handleAddStore}
+            onUpdateStore={handleUpdateStore}
+            onDeleteStore={handleDeleteStore}
+            onAddUser={handleAddUser}
+            onUpdateUser={handleUpdateUser}
+            onDeleteUser={handleDeleteUser}
+          />
+        );
+      default:
+        return <div className="text-center p-8">Erro: Função de usuário desconhecida.</div>;
+    }
+  };
+
   return (
     <div className="min-h-screen font-sans selection:bg-primary-500 selection:text-white overflow-x-hidden relative">
       {/* Ambient Background Blobs */}
@@ -246,40 +308,7 @@ export default function App() {
            </div>
         </nav>
 
-        {user.role === UserRole.EMPLOYEE && (
-          <EmployeeDashboard 
-            user={user} 
-            stores={stores} 
-            coupons={coupons} 
-            redemptions={redemptions.filter(r => r.userId === user.id)}
-          />
-        )}
-
-        {user.role === UserRole.MANAGER && user.storeId && (
-          <ManagerDashboard 
-            user={user}
-            store={stores.find(s => s.id === user.storeId)!}
-            coupons={coupons}
-            redemptions={redemptions}
-            onCreateCoupon={handleCreateCoupon}
-            onDeleteCoupon={handleDeleteCoupon}
-          />
-        )}
-
-        {user.role === UserRole.ADMIN && (
-          <AdminDashboard 
-            stores={stores} 
-            users={users} 
-            coupons={coupons}
-            redemptions={redemptions}
-            onAddStore={handleAddStore}
-            onUpdateStore={handleUpdateStore}
-            onDeleteStore={handleDeleteStore}
-            onAddUser={handleAddUser}
-            onUpdateUser={handleUpdateUser}
-            onDeleteUser={handleDeleteUser}
-          />
-        )}
+        {renderDashboard()}
 
         {user && (
           <ProfileModal 

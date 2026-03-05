@@ -49,15 +49,15 @@ CREATE TABLE public.stores (
   CONSTRAINT stores_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.users (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  id uuid NOT NULL,
   store_id uuid,
   name character varying NOT NULL,
   email character varying NOT NULL UNIQUE,
-  password_hash character varying NOT NULL,
   role character varying CHECK (role::text = ANY (ARRAY['ADMIN'::character varying, 'MANAGER'::character varying, 'EMPLOYEE'::character varying]::text[])),
   active boolean DEFAULT true,
   created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
   avatar_url text,
   CONSTRAINT users_pkey PRIMARY KEY (id),
+  CONSTRAINT users_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id),
   CONSTRAINT users_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id)
 );

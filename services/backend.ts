@@ -40,7 +40,17 @@ export const BackendService = {
     return data;
   },
   
+  async getRedemptions(): Promise<Redemption[]> {
+    const { data, error } = await supabase.from('redemptions').select('*, coupons(*), users(*)');
+    if (error) {
+      console.error("Error fetching redemptions:", error);
+      throw error;
+    }
+    return data as Redemption[];
+  },
+
   async getUserById(id: string): Promise<User | null> {
+    console.log("Attempting to fetch user by ID:", id); // Log the ID
      const { data, error } = await supabase.from('users').select('*').eq('id', id).single();
      if (error) {
        console.error("Error fetching user by id:", error);
@@ -50,6 +60,16 @@ export const BackendService = {
      }
      return data;
   },
+
+  async getUserByEmail(email: string): Promise<User | null> {
+    const { data, error } = await supabase.from('users').select('*').eq('email', email).single();
+    if (error) {
+      console.error("Error fetching user by email:", error);
+      if (error.code === 'PGRST116') return null;
+      throw error;
+    }
+    return data;
+ },
 
   // --- CRUD Functions ---
 

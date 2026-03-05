@@ -55,7 +55,7 @@ export interface Redemption {
   id: string;
   couponId: string;
   userId: string;
-  code: string;
+  unique_code: string;
   status: 'PENDING' | 'USED' | 'EXPIRED';
   redeemedAt: string;
   validatedBy?: string;
